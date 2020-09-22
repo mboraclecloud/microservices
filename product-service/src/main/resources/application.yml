@@ -1,0 +1,22 @@
+server.port: 7001
+
+logging:
+  level:
+    root: INFO
+    com.xx.microservices: DEBUG
+
+spring:
+  data:
+    mongodb:
+      host: localhost
+      port: 27017
+      auto-index-creation: true
+---
+spring.profiles: docker
+
+server.port: 8080
+
+spring:
+  data:
+    mongodb:
+      host: mongodb
