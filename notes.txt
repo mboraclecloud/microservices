@@ -1,0 +1,69 @@
+1. For using maven local repository from gradle:
+=======================================================
+
+Maven plugin needs to be added. 
+
+plugins {
+    id 'java-library'
+    id 'maven'
+    id 'io.spring.dependency-management' version "1.0.10.RELEASE"
+}
+
+Add mavenLocal repo
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+}
+
+Select "Install" task from gradle tasks to install jar to maven local repo from where other projects can pick up by adding mavenLocal repo and dependencies 
+for corresponding jars. eg. 
+
+	implementation 'com.xx.microservices:api:1.0.0'
+	implementation 'com.xx.microservices:util:1.0.0'
+
+2. @Mockbean returns null for classes setup in @Before method:
+=======================================================
+
+As a workaround setup method which was used with @Before method annotation to be called before each test was manually invoked from each test and then MockBean object were made available.
+
+	@MockBean
+	private ProductBusinessIntegration integration;
+
+	@Before
+	public void setUp() {
+
+		when(integration.getProduct(PRODUCT_ID_OK)).
+				thenReturn(new Product(PRODUCT_ID_OK, "name", 1, "mock-address"));
+		when(integration.getRecommendations(PRODUCT_ID_OK)).
+				thenReturn(singletonList(new Recommendation(PRODUCT_ID_OK, 1, "author", "1", "content", "mock address")));
+		when(integration.getReviews(PRODUCT_ID_OK)).
+				thenReturn(singletonList(new Review(PRODUCT_ID_OK, 1, "author", "subject", "content", "mock address")));
+
+		when(integration.getProduct(PRODUCT_ID_NOT_FOUND)).thenThrow(new NotFoundException("No product found for productId: " + PRODUCT_ID_NOT_FOUND));
+
+		when(integration.getProduct(PRODUCT_ID_INVALID)).thenThrow(new InvalidInputException("INVALID: " + PRODUCT_ID_INVALID));
+	}
+  
+  	@Test
+	public void getProductById() {
+		
+    setUp();  ///added this method call here specifically as workaround.
+    
+		getAndVerifyProduct(PRODUCT_ID_OK, OK)
+				.jsonPath("$.productId").isEqualTo(PRODUCT_ID_OK)
+				.jsonPath("$.recommendations.length()").isEqualTo(1)
+				.jsonPath("$.reviews.length()").isEqualTo(1);
+	}
+  
+  3. Suddenly started getting error while executing tests which were running earlier
+  ==========================================================================================
+  
+  Caused by: org.gradle.api.tasks.testing.TestExecutionException: No tests found for given includes:
+  
+  I changed import in test java class from  
+  
+  import org.junit.jupiter.api.Test to  import org.junit.Test after which go above error. Reverting to old import fixed the issue.
+  
+  
+ 
