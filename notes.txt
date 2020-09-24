@@ -68,8 +68,22 @@ As a workaround setup method which was used with @Before method annotation to be
   
  
 4. Reactive services springboot based on Project Reactor
+=================================================================
    ---- Data types user are Flux (process stream of 0..n elements) and Mono (process stream of 0..1 elements)
 
 5. When changing Product and Recommendation services to use spring data reactive, test were failing as ReactiveCrudRepository was not getting injected
+===================================================================================================
   ----made changes to build.gradle to use org.springframework.boot:spring-boot-starter-data-mongodb-reactive instead of
 	org.springframework.boot:spring-boot-starter-data-mongodb
+
+6. ApplicationTests failed while calling "block" method on Mono objects.
+==============================================================================================
+
+By default spring start webflux uses netty as the reactive server and recent versions of netty do not allow block methods. As a workaround for this application
+I have switched from netty as embedded server to tomcat servlet container.
+
+	compile('org.springframework.boot:spring-boot-starter-webflux') {
+		exclude group: 'org.springframework.boot',
+				module: 'spring-boot-starter-reactor-netty'
+	}
+	compile('org.springframework.boot:spring-boot-starter-tomcat')
