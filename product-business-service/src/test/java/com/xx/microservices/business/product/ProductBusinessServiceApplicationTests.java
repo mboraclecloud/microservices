@@ -18,6 +18,8 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.test.web.reactive.server.WebTestClient;
+import reactor.core.publisher.Flux;
+
 import static java.util.Collections.singletonList;
 import static org.mockito.Mockito.when;
 import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
@@ -42,11 +44,11 @@ class ProductBusinessServiceApplicationTests {
 	public void setUp() {
 
 		when(integration.getProduct(PRODUCT_ID_OK)).
-				thenReturn(new Product(PRODUCT_ID_OK, "name", 1, "mock-address"));
+				thenReturn(just(new Product(PRODUCT_ID_OK, "name", 1, "mock-address")));
 		when(integration.getRecommendations(PRODUCT_ID_OK)).
-				thenReturn(singletonList(new Recommendation(PRODUCT_ID_OK, 1, "author", "1", "content", "mock address")));
+				thenReturn(Flux.fromIterable(singletonList(new Recommendation(PRODUCT_ID_OK, 1, "author", "1", "content", "mock address"))));
 		when(integration.getReviews(PRODUCT_ID_OK)).
-				thenReturn(singletonList(new Review(PRODUCT_ID_OK, 1, "author", "subject", "content", "mock address")));
+				thenReturn(Flux.fromIterable(singletonList(new Review(PRODUCT_ID_OK, 1, "author", "subject", "content", "mock address"))));
 
 		when(integration.getProduct(PRODUCT_ID_NOT_FOUND)).thenThrow(new NotFoundException("No product found for productId: " + PRODUCT_ID_NOT_FOUND));
 

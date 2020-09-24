@@ -13,6 +13,7 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
 import static org.springframework.http.HttpStatus.*;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
@@ -30,15 +31,21 @@ public class ProductServiceApplicationTests {
 
 	@Before
 	public void setupDb() {
-		repository.deleteAll();
+		repository.deleteAll().block();
 	}
 
 	@Test
 	public void getProductById() {
 
 		int productId = 1;
+
+		assertNull(repository.findByProductId(productId).block());
+		assertEquals(0, (long)repository.count().block());
+
 		postAndVerifyProduct(productId, OK);
-		assertTrue(repository.findByProductId(productId).isPresent());
+		assertNotNull(repository.findByProductId(productId).block());
+		assertEquals(1, (long)repository.count().block());
+
 		getAndVerifyProduct(productId, OK)
 				.jsonPath("$.productId").isEqualTo(productId);
 	}
@@ -47,10 +54,11 @@ public class ProductServiceApplicationTests {
 	public void duplicateError() {
 
 		int productId = 1;
+		assertNull(repository.findByProductId(productId).block());
 
 		postAndVerifyProduct(productId, OK);
 
-		assertTrue(repository.findByProductId(productId).isPresent());
+		assertNotNull(repository.findByProductId(productId).block());
 
 		postAndVerifyProduct(productId, UNPROCESSABLE_ENTITY)
 				.jsonPath("$.path").isEqualTo("/product")
@@ -63,10 +71,10 @@ public class ProductServiceApplicationTests {
 		int productId = 1;
 
 		postAndVerifyProduct(productId, OK);
-		assertTrue(repository.findByProductId(productId).isPresent());
+		assertNotNull(repository.findByProductId(productId).block());
 
 		deleteAndVerifyProduct(productId, OK);
-		assertFalse(repository.findByProductId(productId).isPresent());
+		assertNull(repository.findByProductId(productId).block());
 
 		deleteAndVerifyProduct(productId, OK);
 	}

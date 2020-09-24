@@ -5,6 +5,7 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiResponse;
 import io.swagger.annotations.ApiResponses;
 import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Mono;
 
 @Api(description = "REST API for business product information.")
 public interface ProductBusinessService {
@@ -47,7 +48,7 @@ public interface ProductBusinessService {
     @GetMapping(
             value    = "/product-business/{productId}",
             produces = "application/json")
-    ProductAggregate getBusinessProduct(@PathVariable int productId);
+    Mono<ProductAggregate> getBusinessProduct(@PathVariable int productId);
 
 
     /**

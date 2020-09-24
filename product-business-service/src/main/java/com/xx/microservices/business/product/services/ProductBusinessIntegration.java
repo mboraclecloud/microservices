@@ -18,18 +18,23 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
 import static org.springframework.http.HttpMethod.GET;
+import static reactor.core.publisher.Flux.empty;
 
 @Component
 public class ProductBusinessIntegration implements ProductService, RecommendationService, ReviewService {
 
     private static final Logger LOG = LoggerFactory.getLogger(ProductBusinessIntegration.class);
-
+    private final WebClient webClient;
     private final RestTemplate restTemplate;
     private final ObjectMapper mapper;
 
@@ -39,9 +44,9 @@ public class ProductBusinessIntegration implements ProductService, Recommendatio
 
     @Autowired
     public ProductBusinessIntegration(
+            WebClient.Builder webClient,
             RestTemplate restTemplate,
             ObjectMapper mapper,
-
             @Value("${app.product-service.host}") String productServiceHost,
             @Value("${app.product-service.port}") int productServicePort,
 
@@ -52,9 +57,9 @@ public class ProductBusinessIntegration implements ProductService, Recommendatio
             @Value("${app.review-service.port}") int reviewServicePort
     ) {
 
-        this.restTemplate = restTemplate;
+        this.webClient = webClient.build();
         this.mapper = mapper;
-
+        this.restTemplate = restTemplate;
         productServiceUrl = "http://" + productServiceHost + ":" + productServicePort + "/product/";
         recommendationServiceUrl = "http://" + recommendationServiceHost + ":" + recommendationServicePort + "/recommendation?productId=";
         reviewServiceUrl = "http://" + reviewServiceHost + ":" + reviewServicePort + "/review?productId=";
@@ -62,20 +67,16 @@ public class ProductBusinessIntegration implements ProductService, Recommendatio
 
 
     @Override
-    public Product getProduct(int productId) {
+    public Mono<Product> getProduct(int productId) {
 
-        try {
             String url = productServiceUrl + "/" + productId;
             LOG.debug("Will call the getProduct API on URL: {}", url);
 
-            Product product = restTemplate.getForObject(url, Product.class);
-            LOG.debug("Found a product with id: {}", product.getProductId());
-
-            return product;
-
-        } catch (HttpClientErrorException ex) {
-            throw handleHttpClientException(ex);
-        }
+            return webClient.get().uri(url)
+                    .retrieve()
+                    .bodyToMono(Product.class)
+                    .log()
+                    .onErrorMap(WebClientResponseException.class, ex -> handleException(ex));
     }
 
     private String getErrorMessage(HttpClientErrorException ex) {
@@ -86,41 +87,39 @@ public class ProductBusinessIntegration implements ProductService, Recommendatio
         }
     }
 
-
-    @Override
-    public List<Recommendation> getRecommendations(int productId) {
-
+    private String getErrorMessage(WebClientResponseException ex) {
         try {
-            String url = recommendationServiceUrl + "?productId=" + productId;
-
-            LOG.debug("Will call the getRecommendations API on URL: {}", url);
-            List<Recommendation> recommendations = restTemplate.exchange(url, GET, null, new ParameterizedTypeReference<List<Recommendation>>() {}).getBody();
-
-            LOG.debug("Found {} recommendations for a product with id: {}", recommendations.size(), productId);
-            return recommendations;
-
-        } catch (Exception ex) {
-            LOG.warn("Got an exception while requesting recommendations, return zero recommendations: {}", ex.getMessage());
-            return new ArrayList<>();
+            return mapper.readValue(ex.getResponseBodyAsString(), HttpErrorInfo.class).getMessage();
+        } catch (IOException ioex) {
+            return ex.getMessage();
         }
     }
 
-    @Override
-    public List<Review> getReviews(int productId) {
 
-        try {
+    @Override
+    public Flux<Recommendation> getRecommendations(int productId) {
+
+            String url = recommendationServiceUrl + "?productId=" + productId;
+
+            LOG.debug("Will call the getRecommendations API on URL: {}", url);
+
+            return webClient.get().uri(url)
+                    .retrieve()
+                    .bodyToFlux(Recommendation.class)
+                    .log()
+                    .onErrorResume(error -> empty());
+
+    }
+
+    @Override
+    public Flux<Review> getReviews(int productId) {
             String url = reviewServiceUrl + "?productId=" + productId;
 
             LOG.debug("Will call the getReviews API on URL: {}", url);
-            List<Review> reviews = restTemplate.exchange(url, GET, null, new ParameterizedTypeReference<List<Review>>() {}).getBody();
-
-            LOG.debug("Found {} reviews for a product with id: {}", reviews.size(), productId);
-            return reviews;
-
-        } catch (Exception ex) {
-            LOG.warn("Got an exception while requesting reviews, return zero reviews: {}", ex.getMessage());
-            return new ArrayList<>();
-        }
+            return webClient.get().uri(url)
+                    .retrieve()
+                    .bodyToFlux(Review.class)
+                    .onErrorResume(error -> empty());
     }
 
     @Override
@@ -226,6 +225,30 @@ public class ProductBusinessIntegration implements ProductService, Recommendatio
             default:
                 LOG.warn("Got a unexpected HTTP error: {}, will rethrow it", ex.getStatusCode());
                 LOG.warn("Error body: {}", ex.getResponseBodyAsString());
+                return ex;
+        }
+    }
+
+    private Throwable handleException(Throwable ex) {
+
+        if (!(ex instanceof WebClientResponseException)) {
+            LOG.warn("Got a unexpected error: {}, will rethrow it", ex.toString());
+            return ex;
+        }
+
+        WebClientResponseException wcre = (WebClientResponseException)ex;
+
+        switch (wcre.getStatusCode()) {
+
+            case NOT_FOUND:
+                return new NotFoundException(getErrorMessage(wcre));
+
+            case UNPROCESSABLE_ENTITY :
+                return new InvalidInputException(getErrorMessage(wcre));
+
+            default:
+                LOG.warn("Got a unexpected HTTP error: {}, will rethrow it", wcre.getStatusCode());
+                LOG.warn("Error body: {}", wcre.getResponseBodyAsString());
                 return ex;
         }
     }

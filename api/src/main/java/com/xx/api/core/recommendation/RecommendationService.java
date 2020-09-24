@@ -3,6 +3,8 @@ package com.xx.api.core.recommendation;
 import com.xx.api.core.product.Product;
 import com.xx.api.core.review.Review;
 import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.util.List;
 
@@ -12,7 +14,7 @@ public interface RecommendationService {
             value = "/recommendation",
             produces = "application/json"
     )
-    List<Recommendation> getRecommendations(@RequestParam(
+    Flux<Recommendation> getRecommendations(@RequestParam(
             value = "productId",
             required = true
     ) int productId);
