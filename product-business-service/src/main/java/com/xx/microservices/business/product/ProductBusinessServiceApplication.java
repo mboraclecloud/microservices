@@ -1,7 +1,10 @@
 package com.xx.microservices.business.product;
 
+import com.xx.microservices.business.product.services.ProductBusinessIntegration;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
+import org.springframework.boot.actuate.health.*;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
@@ -11,6 +14,8 @@ import springfox.documentation.service.ApiInfo;
 import springfox.documentation.service.Contact;
 import springfox.documentation.spring.web.plugins.Docket;
 import springfox.documentation.swagger2.annotations.EnableSwagger2;
+
+import java.util.LinkedHashMap;
 
 import static java.util.Collections.emptyList;
 import static org.springframework.web.bind.annotation.RequestMethod.GET;
@@ -62,6 +67,25 @@ public class ProductBusinessServiceApplication {
 	RestTemplate restTemplate() {
 		return new RestTemplate();
 	}
+
+	@Autowired
+	HealthAggregator healthAggregator;
+
+	@Autowired
+	ProductBusinessIntegration integration;
+
+	@Bean
+	ReactiveHealthIndicator coreServices(){
+		ReactiveHealthIndicatorRegistry registry = new
+				DefaultReactiveHealthIndicatorRegistry(new LinkedHashMap<>());
+		registry.register("product", () -> integration.getProductHealth());
+		registry.register("recommendation", () ->
+				integration.getRecommendationHealth());
+		registry.register("review", () -> integration.getReviewHealth());
+		return new CompositeReactiveHealthIndicator(healthAggregator,
+				registry);
+	}
+
 
 	public static void main(String[] args) {
 		SpringApplication.run(ProductBusinessServiceApplication.class, args);

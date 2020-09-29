@@ -1,17 +1,26 @@
 package com.xx.microservices.core.review;
 
 import com.xx.api.core.review.Review;
+import com.xx.api.event.Event;
 import com.xx.microservices.core.review.persistence.ReviewRepository;
+import com.xx.util.exceptions.InvalidInputException;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.cloud.stream.messaging.Sink;
 import org.springframework.http.HttpStatus;
+import org.springframework.integration.channel.AbstractMessageChannel;
+import org.springframework.messaging.MessagingException;
+import org.springframework.messaging.support.GenericMessage;
 import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
+import static com.xx.api.event.Event.Type.CREATE;
+import static com.xx.api.event.Event.Type.DELETE;
 import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
 import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
 import static org.springframework.http.HttpStatus.*;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
@@ -28,22 +37,30 @@ public class ReviewServiceApplicationTests {
 	@Autowired
 	private ReviewRepository repository;
 
+	@Autowired
+	private Sink channels;
+
+	private AbstractMessageChannel input = null;
 
 	@Before
 	public void setupDb() {
+		input = (AbstractMessageChannel) channels.input();
 		repository.deleteAll();
 	}
-
 	@Test
 	public void getReviewsByProductId() {
-
+		setupDb();
 		int productId = 1;
 
 		assertEquals(0, repository.findByProductId(productId).size());
 
-		postAndVerifyReview(productId, 1, OK);
-		postAndVerifyReview(productId, 2, OK);
-		postAndVerifyReview(productId, 3, OK);
+//		postAndVerifyReview(productId, 1, OK);
+//		postAndVerifyReview(productId, 2, OK);
+//		postAndVerifyReview(productId, 3, OK);
+
+		sendCreateReviewEvent(productId, 1);
+		sendCreateReviewEvent(productId, 2);
+		sendCreateReviewEvent(productId, 3);
 
 		assertEquals(3, repository.findByProductId(productId).size());
 
@@ -55,38 +72,54 @@ public class ReviewServiceApplicationTests {
 
 	@Test
 	public void duplicateError() {
-
+		setupDb();
 		int productId = 1;
 		int reviewId = 1;
 
 		assertEquals(0, repository.count());
 
-		postAndVerifyReview(productId, reviewId, OK)
-				.jsonPath("$.productId").isEqualTo(productId)
-				.jsonPath("$.reviewId").isEqualTo(reviewId);
+//		postAndVerifyReview(productId, reviewId, OK)
+//				.jsonPath("$.productId").isEqualTo(productId)
+//				.jsonPath("$.reviewId").isEqualTo(reviewId);
+		sendCreateReviewEvent(productId, reviewId);
 
 		assertEquals(1, repository.count());
 
-		postAndVerifyReview(productId, reviewId, UNPROCESSABLE_ENTITY)
-				.jsonPath("$.path").isEqualTo("/review")
-				.jsonPath("$.message").isEqualTo("Duplicate key, Product Id: 1, Review Id:1");
+//		postAndVerifyReview(productId, reviewId, UNPROCESSABLE_ENTITY)
+//				.jsonPath("$.path").isEqualTo("/review")
+//				.jsonPath("$.message").isEqualTo("Duplicate key, Product Id: 1, Review Id:1");
+		try{
+			sendCreateReviewEvent(productId, reviewId);
+			fail("Expected a MessagingException here!");
+		} catch (MessagingException me){
 
+			if (me.getCause() instanceof InvalidInputException)	{
+				InvalidInputException iie = (InvalidInputException)me.getCause();
+				assertEquals("Duplicate key, Product Id: 1, Review Id:1", iie.getMessage());
+			} else {
+				fail("Expected a InvalidInputException as the root cause!");
+			}
+		}
 		assertEquals(1, repository.count());
 	}
 
 	@Test
 	public void deleteReviews() {
-
+		setupDb();
 		int productId = 1;
-		int recommendationId = 1;
+		int reviewId = 1;
 
-		postAndVerifyReview(productId, recommendationId, OK);
+//		postAndVerifyReview(productId, reviewId, OK);
+		sendCreateReviewEvent(productId, reviewId);
 		assertEquals(1, repository.findByProductId(productId).size());
 
-		deleteAndVerifyReviewsByProductId(productId, OK);
+//		deleteAndVerifyReviewsByProductId(productId, OK);
+		sendDeleteReviewEvent(productId);
+
 		assertEquals(0, repository.findByProductId(productId).size());
 
-		deleteAndVerifyReviewsByProductId(productId, OK);
+//		deleteAndVerifyReviewsByProductId(productId, OK);
+		sendDeleteReviewEvent(productId);
 	}
 
 	@Test
@@ -155,5 +188,16 @@ public class ReviewServiceApplicationTests {
 				.exchange()
 				.expectStatus().isEqualTo(expectedStatus)
 				.expectBody();
+	}
+
+	private void sendCreateReviewEvent(int productId, int reviewId){
+		Review review = new Review(productId, reviewId, "author : "+ reviewId, "subject : "+ reviewId, "content : "+ reviewId, "SA");
+		Event<Integer, Review> event = new Event(CREATE,reviewId, review);
+		input.send(new GenericMessage<>(event));
+	}
+
+	private void sendDeleteReviewEvent(int productId){
+		Event<Integer, Review> event = new Event(DELETE, productId, null);
+		input.send(new GenericMessage<>(event));
 	}
 }

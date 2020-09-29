@@ -1,16 +1,24 @@
 package com.xx.microservices.core.product;
 
 import com.xx.api.core.product.Product;
+import com.xx.api.event.Event;
 import com.xx.microservices.core.product.persistence.ProductRepository;
+import com.xx.util.exceptions.InvalidInputException;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.cloud.stream.messaging.Sink;
 import org.springframework.http.HttpStatus;
+import org.springframework.integration.channel.AbstractMessageChannel;
+import org.springframework.messaging.MessagingException;
+import org.springframework.messaging.support.GenericMessage;
 import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
+import static com.xx.api.event.Event.Type.CREATE;
+import static com.xx.api.event.Event.Type.DELETE;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.jupiter.api.Assertions.*;
@@ -28,9 +36,14 @@ public class ProductServiceApplicationTests {
 	private WebTestClient client;
 	@Autowired
 	private ProductRepository repository;
+	@Autowired
+	private Sink channels;
+
+	private AbstractMessageChannel input = null;
 
 	@Before
 	public void setupDb() {
+		input = (AbstractMessageChannel) channels.input();
 		repository.deleteAll().block();
 	}
 
@@ -42,7 +55,8 @@ public class ProductServiceApplicationTests {
 		assertNull(repository.findByProductId(productId).block());
 		assertEquals(0, (long)repository.count().block());
 
-		postAndVerifyProduct(productId, OK);
+//		postAndVerifyProduct(productId, OK);
+		sendCreateProductEvent(productId);
 		assertNotNull(repository.findByProductId(productId).block());
 		assertEquals(1, (long)repository.count().block());
 
@@ -56,13 +70,25 @@ public class ProductServiceApplicationTests {
 		int productId = 1;
 		assertNull(repository.findByProductId(productId).block());
 
-		postAndVerifyProduct(productId, OK);
-
+//		postAndVerifyProduct(productId, OK);
+		sendCreateProductEvent(productId);
 		assertNotNull(repository.findByProductId(productId).block());
 
-		postAndVerifyProduct(productId, UNPROCESSABLE_ENTITY)
-				.jsonPath("$.path").isEqualTo("/product")
-				.jsonPath("$.message").isEqualTo("Duplicate key, Product Id: " + productId);
+//		postAndVerifyProduct(productId, UNPROCESSABLE_ENTITY)
+//				.jsonPath("$.path").isEqualTo("/product")
+//				.jsonPath("$.message").isEqualTo("Duplicate key, Product Id: " + productId);
+
+		try {
+			sendCreateProductEvent(productId);
+			fail("Expected a MessagingException here!");
+		} catch (MessagingException me) {
+			if (me.getCause() instanceof InvalidInputException)	{
+				InvalidInputException iie = (InvalidInputException)me.getCause();
+				assertEquals("Duplicate key, Product Id: " + productId, iie.getMessage());
+			} else {
+				fail("Expected a InvalidInputException as the root cause!");
+			}
+		}
 	}
 
 	@Test
@@ -70,13 +96,16 @@ public class ProductServiceApplicationTests {
 
 		int productId = 1;
 
-		postAndVerifyProduct(productId, OK);
+//		postAndVerifyProduct(productId, OK);
+		sendCreateProductEvent(productId);
 		assertNotNull(repository.findByProductId(productId).block());
 
-		deleteAndVerifyProduct(productId, OK);
+//		deleteAndVerifyProduct(productId, OK);
+		sendDeleteProductEvent(productId);
 		assertNull(repository.findByProductId(productId).block());
 
-		deleteAndVerifyProduct(productId, OK);
+//		deleteAndVerifyProduct(productId, OK);
+		sendDeleteProductEvent(productId);
 	}
 
 	@Test
@@ -139,5 +168,16 @@ public class ProductServiceApplicationTests {
 				.exchange()
 				.expectStatus().isEqualTo(expectedStatus)
 				.expectBody();
+	}
+
+	private void sendCreateProductEvent(int productId) {
+		Product product = new Product(productId, "Name " + productId, productId, "SA");
+		Event<Integer, Product> event = new Event(CREATE, productId, product);
+		input.send(new GenericMessage<>(event));
+	}
+
+	private void sendDeleteProductEvent(int productId) {
+		Event<Integer, Product> event = new Event(DELETE, productId, null);
+		input.send(new GenericMessage<>(event));
 	}
 }
