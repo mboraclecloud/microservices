@@ -89,8 +89,10 @@ I have switched from netty as embedded server to tomcat servlet container.
 	compile('org.springframework.boot:spring-boot-starter-tomcat')
 
 7. Useful docker-compose commands
+==============================================================================================
 
 docker-compose -f docker-compose.yml up -d --scale review=2
+docker-compose up -d --scale review=1 --scale eureka=0 --scale product=2
 
 docker-compose exec product-composite getent hosts review
 172.30.0.7      review
@@ -102,4 +104,24 @@ docker-compose exec --index=2 review cat /etc/hosts
 
 Services can be called using above dns entry, but DNS protocol cache first ip and uses it for subsequent requests. It is not suited for microserivces environment where services come and go all the time.
 
+8. Get instance id from eureka
+==============================================================================================
+curl -H "accept:application/json" localhost:8761/eureka/apps -s | jq -r .applications.application[].instance[].instanceId
 
+9. java.sql.SQLSyntaxErrorException: Table 'review-db.hibernate_sequence' doesn't exist
+        at com.mysql.cj.jdbc.exceptions.SQLError.createSQLException(SQLError.java:120)
+==============================================================================================
+By default, Hibernate generates key from hibernate_sequence table, we can disable it by setting this hibernate.use-new-id-generator-mappings to false.
+
+spring.jpa.hibernate.use-new-id-generator-mappings=false
+
+Below property creates ddl during startup, ensure this is set to none in production****
+
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: update
+
+10. Curl command with timeout of 2 seconds
+=========================================================================
+curl localhost:8080/product-composite/2 -m 2
